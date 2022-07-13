@@ -61,6 +61,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d696c370c750c948ada61c69a0ee2cbbb9c50b1019ddb86d9317157a99c2cae"
 
 [[package]]
+name = "bulletproof-kzen"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "027bd47aafa322a98e7f4f427ce448439c80f2532a87ee68c29b656668465c78"
+dependencies = [
+ "curv-kzen",
+ "generic-array 0.14.5",
+ "itertools",
+ "serde",
+ "serde_derive",
+ "sha2 0.9.9",
+]
+
+[[package]]
 name = "byte-tools"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -76,7 +90,9 @@ checksum = "14c189c53d098945499cdfa7ecc63567cf3886b3332b312a5b4585d8d3a6a610"
 name = "cbps"
 version = "0.1.0"
 dependencies = [
+ "bulletproof-kzen",
  "curv-kzen",
+ "sha2 0.9.9",
 ]
 
 [[package]]
@@ -230,6 +246,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "either"
+version = "1.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f107b87b6afc2a64fd13cac55fe06d6c8859f12d4b14cbcdd2c67d0976781be"
+
+[[package]]
 name = "elliptic-curve"
 version = "0.10.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -362,6 +384,15 @@ checksum = "2a2a2320eb7ec0ebe8da8f744d7812d9fc4cb4d09344ac01898dbcb6a20ae69b"
 dependencies = [
  "crypto-mac",
  "digest 0.9.0",
+]
+
+[[package]]
+name = "itertools"
+version = "0.7.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d47946d458e94a1b7bcabbf6521ea7c037062c81f534615abcad76e84d4970d"
+dependencies = [
+ "either",
 ]
 
 [[package]]

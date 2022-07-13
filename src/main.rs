@@ -1,6 +1,9 @@
+use bulletproof::proofs::range_proof::RangeProof;
 use curv::arithmetic::*;
+use curv::cryptographic_primitives::hashing::{Digest, DigestExt};
+use curv::elliptic::curves::secp256_k1::hash_to_curve::generate_random_point;
 use curv::elliptic::curves::*;
-
+use sha2::Sha512;
 /// Pedersen Commitment:
 /// compute c = mG + rH
 /// where m is the commited value, G is the group generator,
@@ -13,6 +16,26 @@ use curv::elliptic::curves::*;
 /// notice: this library includes also hash based commitments
 
 const SECURITY_BITS: usize = 256;
+const RANGE_SIZE: usize = 9;
+const BATCH_SIZE: usize = 2;
+const SEEDS: &[u8] = &[75, 90, 101, 110];
+// static G_VEC: Vec<Point<Secp256k1>> = (0..RANGE_SIZE * BATCH_SIZE)
+//     .map(|i| {
+//         let seeds_label = BigInt::from_bytes(SEEDS);
+//         let kzen_label_i = BigInt::from(i as u32) + &seeds_label;
+//         let hash_i = Sha512::new().chain_bigint(&kzen_label_i).result_bigint();
+//         generate_random_point(&Converter::to_bytes(&hash_i))
+//     })
+//     .collect::<Vec<Point<Secp256k1>>>();
+
+// static H_VEC: Vec<Point<Secp256k1>> = (0..RANGE_SIZE * BATCH_SIZE)
+//     .map(|i| {
+//         let seeds_label = BigInt::from_bytes(SEEDS);
+//         let kzen_label_j = BigInt::from(RANGE_SIZE as u32) + BigInt::from(i as u32) + &seeds_label;
+//         let hash_j = Sha512::new().chain_bigint(&kzen_label_j).result_bigint();
+//         generate_random_point(&Converter::to_bytes(&hash_j))
+//     })
+//     .collect::<Vec<Point<Secp256k1>>>();
 
 pub fn ped_com<E: Curve>(message: &BigInt) {
     use curv::cryptographic_primitives::commitments::pedersen_commitment::PedersenCommitment;
@@ -39,6 +62,11 @@ pub struct ElgamalCipher<E: Curve> {
 pub struct ElgamalDecShare<E: Curve> {
     pub share: Point<E>,
     pub index: i32,
+}
+
+pub struct cbps_tx<E: Curve> {
+    pub ct_value: Point<E>,
+    pub range_pf: RangeProof,
 }
 
 pub fn central_gen_thresh_key<E: Curve>(t: i32, n: i32) -> (Point<E>, Vec<Scalar<E>>) {
@@ -71,16 +99,22 @@ pub fn gen_key<E: Curve>() -> (Point<E>, Scalar<E>) {
     (&x_scalar * g, x_scalar)
 }
 
-pub fn elgamal_enc<E: Curve>(message: &Scalar<E>, pk: &Point<E>) -> ElgamalCipher<E> {
+pub fn elgamal_enc<E: Curve>(
+    message: &Scalar<E>,
+    pk: &Point<E>,
+    em_key: &Scalar<E>,
+) -> ElgamalCipher<E> {
     let g = Point::<E>::generator();
-    let k = BigInt::sample(SECURITY_BITS);
-    let k_scalar = Scalar::<E>::from(k);
-    let c1 = &k_scalar * g;
+    // let k = BigInt::sample(SECURITY_BITS);
+    // let k_scalar = Scalar::<E>::from(k);
+    let c1 = em_key * g;
     let mg = message * g;
-    let kp = &k_scalar * pk;
+    let kp = em_key * pk;
     let c2 = mg + kp;
     ElgamalCipher { c1, c2 }
 }
+
+// pub fn new_tx<E: Curve>(value: &Scalar<E>, pk: &Point<E>) -> cbps_tx<E> {}
 
 pub fn elgamal_add<E: Curve>(ct1: &ElgamalCipher<E>, ct2: &ElgamalCipher<E>) -> ElgamalCipher<E> {
     let new_c1 = &ct1.c1 + &ct2.c1;
@@ -141,6 +175,96 @@ pub fn elgamal_dec<E: Curve>(ct: &ElgamalCipher<E>, sk: &Scalar<E>) -> Result<Sc
     Err(())
 }
 
+pub fn generate_bulletproof_batch_secp256k1(
+    values: Vec<Scalar<Secp256k1>>,
+    one_time_keys: &Vec<Scalar<Secp256k1>>,
+    pk_auth: &Point<Secp256k1>,
+    g_vec: Vec<Point<Secp256k1>>,
+    h_vec: Vec<Point<Secp256k1>>,
+) -> RangeProof {
+    // bit range
+    let n = 9;
+    // batch size
+    let m = 2;
+    let nm = n * m;
+    //seeds
+    let seeds: &[u8] = &[75, 90, 101, 110];
+    let seeds_label = BigInt::from_bytes(seeds);
+
+    let g = Point::<Secp256k1>::generator();
+    // let g_vec = (0..nm)
+    //     .map(|i| {
+    //         let kzen_label_i = BigInt::from(i as u32) + &seeds_label;
+    //         let hash_i = Sha512::new().chain_bigint(&kzen_label_i).result_bigint();
+    //         generate_random_point(&Converter::to_bytes(&hash_i))
+    //     })
+    //     .collect::<Vec<Point<Secp256k1>>>();
+
+    // let h_vec = (0..nm)
+    //     .map(|i| {
+    //         let kzen_label_j = BigInt::from(n as u32) + BigInt::from(i as u32) + &seeds_label;
+    //         let hash_j = Sha512::new().chain_bigint(&kzen_label_j).result_bigint();
+    //         generate_random_point(&Converter::to_bytes(&hash_j))
+    //     })
+    //     .collect::<Vec<Point<Secp256k1>>>();
+
+    let range_proof = RangeProof::prove(&g_vec, &h_vec, &g, pk_auth, values, one_time_keys, n);
+    range_proof
+}
+
+// pub fn validate_bulletproof_secp256k1(proof: &RangeProof, )
+
+pub fn test_batch_1_range_proof_8() {
+    // bit range
+    let n = 8;
+    // batch size
+    let m = 1;
+    let nm = n * m;
+    // some seed for generating g and h vectors
+    let KZen: &[u8] = &[75, 90, 101, 110];
+    let kzen_label = BigInt::from_bytes(KZen);
+
+    // G,H - points for pederson commitment: com  = vG + rH
+    let G = Point::<Secp256k1>::generator();
+    let label = BigInt::from(1i32);
+    let hash = Sha512::new().chain_bigint(&label).result_bigint();
+    let H = generate_random_point(&Converter::to_bytes(&hash));
+
+    let g_vec = (0..nm)
+        .map(|i| {
+            let kzen_label_i = BigInt::from(i as u32) + &kzen_label;
+            let hash_i = Sha512::new().chain_bigint(&kzen_label_i).result_bigint();
+            generate_random_point(&Converter::to_bytes(&hash_i))
+        })
+        .collect::<Vec<Point<Secp256k1>>>();
+
+    // can run in parallel to g_vec:
+    let h_vec = (0..nm)
+        .map(|i| {
+            let kzen_label_j = BigInt::from(n as u32) + BigInt::from(i as u32) + &kzen_label;
+            let hash_j = Sha512::new().chain_bigint(&kzen_label_j).result_bigint();
+            generate_random_point(&Converter::to_bytes(&hash_j))
+        })
+        .collect::<Vec<Point<Secp256k1>>>();
+
+    let range = BigInt::from(2).pow(n as u32);
+    let v_vec = (0..m)
+        .map(|_| Scalar::<Secp256k1>::from(&BigInt::sample_below(&range)))
+        .collect::<Vec<Scalar<Secp256k1>>>();
+
+    let r_vec = (0..m)
+        .map(|_| Scalar::<Secp256k1>::random())
+        .collect::<Vec<Scalar<Secp256k1>>>();
+
+    let ped_com_vec = (0..m)
+        .map(|i| &*G * &v_vec[i] + &H * &r_vec[i])
+        .collect::<Vec<Point<Secp256k1>>>();
+
+    let range_proof = RangeProof::prove(&g_vec, &h_vec, &G, &H, v_vec, &r_vec, n);
+    let result = RangeProof::verify(&range_proof, &g_vec, &h_vec, &G, &H, &ped_com_vec, n);
+    assert!(result.is_ok());
+}
+
 fn main() {
     // let message = "commit me!";
     // let message_bn = BigInt::from_bytes(message.as_bytes());
@@ -172,9 +296,37 @@ fn main() {
     // let r3 = elgamal_dec(&ct3, &sk).unwrap();
     // let big_r3 = r3.to_bigint();
 
+    // bit range
+    let n = 8;
+    // batch size
+    let m = 2;
+    let nm = n * m;
+    //seeds
+    let seeds: &[u8] = &[75, 90, 101, 110];
+    let seeds_label = BigInt::from_bytes(seeds);
+
+    let g = Point::<Secp256k1>::generator();
+    let g_vec = (0..nm)
+        .map(|i| {
+            let kzen_label_i = BigInt::from(i as u32) + &seeds_label;
+            let hash_i = Sha512::new().chain_bigint(&kzen_label_i).result_bigint();
+            generate_random_point(&Converter::to_bytes(&hash_i))
+        })
+        .collect::<Vec<Point<Secp256k1>>>();
+
+    let h_vec = (0..nm)
+        .map(|i| {
+            let kzen_label_j = BigInt::from(n as u32) + BigInt::from(i as u32) + &seeds_label;
+            let hash_j = Sha512::new().chain_bigint(&kzen_label_j).result_bigint();
+            generate_random_point(&Converter::to_bytes(&hash_j))
+        })
+        .collect::<Vec<Point<Secp256k1>>>();
+
     let (pk, sks) = central_gen_thresh_key::<Secp256k1>(3, 5);
     let m_scalar = Scalar::<Secp256k1>::from(103i32);
-    let ct = elgamal_enc(&m_scalar, &pk);
+    let k = BigInt::sample(SECURITY_BITS);
+    let k_scalar = Scalar::<Secp256k1>::from(k);
+    let ct = elgamal_enc(&m_scalar, &pk, &k_scalar);
     let share1 = elgamal_dec_share(&ct, &sks[0], 1);
     let share2 = elgamal_dec_share(&ct, &sks[1], 2);
     let share3 = elgamal_dec_share(&ct, &sks[2], 3);
@@ -183,6 +335,24 @@ fn main() {
     let r = combind_share(&ct, shares).unwrap();
     let big_r = r.to_bigint();
     println!("{}", big_r);
+
+    let m_scalar2 = Scalar::<Secp256k1>::from(50);
+    let k2 = BigInt::sample(SECURITY_BITS);
+    let k_scalar2 = Scalar::<Secp256k1>::from(k2);
+    let ct2 = elgamal_enc(&m_scalar2, &pk, &k_scalar2);
+
+    let scalars = vec![m_scalar, m_scalar2];
+    let keys = vec![k_scalar, k_scalar2];
+
+    let range_proof = RangeProof::prove(&g_vec, &h_vec, &g, &pk, scalars, &keys, n);
+
+    let c2s = vec![ct.c2, ct2.c2];
+    let result = RangeProof::verify(&range_proof, &g_vec, &h_vec, &g, &pk, &c2s, n);
+
+    match result {
+        Ok(_) => println!("Valid"),
+        Err(_) => println!("Invalid"),
+    }
 
     // println!("{} + {} = {}", big_r, big_r2, big_r3);
 }

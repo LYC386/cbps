@@ -7,3 +7,5 @@ edition = "2021"
 
 [dependencies]
 curv-kzen = "0.9"
+bulletproof-kzen = "1.2.0"
+sha2 = "0.9"
